@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     
     # API
     api_title: str = "FastAPI Application"
-    api_version: str = "1.0.0"
+    api_version: str = "1.1.0"
     api_description: str = "API desarrollada con FastAPI para producción"
     
     # Base de datos (opcional)
