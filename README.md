@@ -1,204 +1,71 @@
-# Tarea 3.1 - Despliegue a Producción
+# Tarea 3.1 - Del Desarrollo a Producción
 
-## 📋 Descripción del Proyecto
-Aplicación web completa con backend FastAPI y frontend, desplegada en entorno de producción.
+Aplicación web con FastAPI desplegada en producción con Docker, Nginx y CI/CD.
 
-## 🖥️ Configuración del Entorno de Producción
+## Descripción
 
-### Plataforma Seleccionada
-**Railway / Render** (PaaS)
+Aplicación web desarrollada con FastAPI que implementa un entorno de producción completo, incluyendo gestión de dependencias, optimización del servidor web, despliegue automatizado y medidas de seguridad.
 
-#### Justificación:
-- ✅ Despliegue automático desde repositorio Git
-- ✅ HTTPS gratuito
-- ✅ Escalabilidad automática
-- ✅ Variables de entorno seguras
-- ✅ Logs en tiempo real
-- ✅ Reinicio automático ante fallos
+## Tecnologías
 
-### Sistema Operativo
-- **Contenedor Docker** basado en `python:3.11-slim`
-- Sistema: Debian Linux (slim)
+- **Backend**: Python 3.11, FastAPI
+- **Servidor Web**: Nginx + Gunicorn
+- **Contenedores**: Docker
+- **Despliegue**: Railway
+- **CI/CD**: GitHub Actions
 
-### Lenguajes y Runtimes
+## Instalación
 
-#### Backend (API)
-- **Python**: 3.11+
-- **Framework**: FastAPI
-- **Servidor ASGI**: Uvicorn
-- **Gestor de dependencias**: pip / Poetry
-
-#### Frontend (Cliente)
-- **HTML5 / CSS3 / JavaScript** (Vanilla o framework usado anteriormente)
-
-### Variables de Entorno Configuradas
-
-```env
-# Configuración de la aplicación
-ENVIRONMENT=production
-DEBUG=False
-
-# Servidor
-HOST=0.0.0.0
-PORT=8000
-
-# Base de datos (si aplica)
-DATABASE_URL=postgresql://user:password@host:port/dbname
-
-# Seguridad
-SECRET_KEY=your-secret-key-here
-ALLOWED_ORIGINS=https://yourdomain.com
-
-# CORS
-CORS_ORIGINS=["https://yourdomain.com"]
-```
-
-### Puertos y Servicios
-
-| Servicio | Puerto | Protocolo | Descripción |
-|----------|--------|-----------|-------------|
-| Nginx (Proxy/Static) | 8000 | HTTP/HTTPS | Servidor web y proxy inverso |
-| Gunicorn (Internal) | 8001 | HTTP | Servidor de aplicación (interno) |
-| PostgreSQL | 5432 | TCP | Base de datos (si se usa) |
-| Redis | 6379 | TCP | Caché (opcional) |
-
-### Arquitectura de Despliegue (✨ Optimizada - Parte 3)
-
-```
-Internet (HTTPS)
-    ↓
-Load Balancer (Railway)
-    ↓
-Contenedor Docker
-    ├─ Supervisord (Gestor de procesos)
-    │   ├─ Nginx :8000 (Proxy inverso + Archivos estáticos)
-    │   │   ├─ Compresión GZIP (60-80% reducción)
-    │   │   ├─ Cache de estáticos
-    │   │   └─ Security headers
-    │   │
-    │   └─ Gunicorn :8001 (4-5 workers Uvicorn)
-    │       └─ FastAPI Application
-```
-
-## 📦 Estructura del Proyecto
-
-```
-Tarea_3.1/
-├── app/
-│   ├── __init__.py
-│   ├── main.py                 # Punto de entrada FastAPI
-│   ├── config.py               # Configuración y variables de entorno
-│   ├── routers/                # Endpoints de la API
-│   ├── models/                 # Modelos de datos
-│   ├── services/               # Lógica de negocio
-│   └── middleware/             # Middlewares (CORS, seguridad)
-├── static/                     # Archivos estáticos del cliente
-│   ├── index.html
-│   ├── css/
-│   └── js/
-├── requirements.txt            # Dependencias Python
-├── Dockerfile                  # Configuración del contenedor
-├── .env.example               # Plantilla de variables de entorno
-├── .gitignore                 # Archivos a ignorar en Git
-└── README.md                  # Este archivo
-```
-
-## 🚀 Instrucciones de Despliegue
-
-### 1. Preparación Local
+1. Crear entorno virtual:
 ```bash
-# Crear entorno virtual
 python -m venv venv
-source venv/bin/activate  # En Windows: venv\Scripts\activate
+venv\Scripts\activate
+```
 
-# Instalar dependencias
+2. Instalar dependencias:
+```bash
 pip install -r requirements.txt
+```
 
-# Copiar variables de entorno
-cp .env.example .env
+3. Configurar variables de entorno:
+```bash
+copy .env.example .env
 # Editar .env con tus valores
 ```
 
-### 2. Prueba Local
+4. Iniciar servidor:
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+.\start.ps1
 ```
 
-### 3. Despliegue en Producción
-Ver documentación específica en `docs/deployment.md`
+## Uso
 
-## 🔒 Medidas de Seguridad Implementadas
+- **Web**: http://localhost:8000/static/index.html
+- **API Docs**: http://localhost:8000/docs
+- **Health Check**: http://localhost:8000/health
 
-- ✅ Variables de entorno para datos sensibles
-- ✅ HTTPS obligatorio
-- ✅ CORS configurado restrictivamente
-- ✅ Headers de seguridad (HSTS, X-Frame-Options)
-- ✅ Rate limiting
-- ✅ Validación de datos con Pydantic
-- ✅ Logs sin información sensible
+## Docker
 
-## 📊 Monitorización
+Build y ejecución en producción:
+```bash
+docker-compose -f docker-compose.prod.yml build
+docker-compose -f docker-compose.prod.yml up
+```
 
-- Logs de aplicación
-- Métricas de rendimiento
-- Alertas de errores
+## Despliegue
 
-## � Documentación Adicional
+El proyecto se despliega automáticamente en Railway al hacer push a main. GitHub Actions ejecuta tests, análisis de seguridad y construye la imagen Docker.
 
-### 📦 Documentos de Entrega Oficiales
+## Características Implementadas
 
-| Parte | Documento | Estado |
-|-------|-----------|--------|
-| **Parte 1** | [📄 ENTREGA_PARTE1.md](ENTREGA_PARTE1.md) | ✅ Completa |
-| **Parte 2** | [📄 ENTREGA_PARTE2.md](ENTREGA_PARTE2.md) | ✅ Completa |
-| **Parte 3** | [📄 ENTREGA_PARTE3.md](ENTREGA_PARTE3.md) | ✅ Completa |
+- Gestión de dependencias separadas (producción/desarrollo)
+- Optimización con Nginx (GZIP, cache, proxy)
+- CI/CD automatizado
+- Medidas de seguridad (HTTPS, rate limiting, headers)
+- Tests automáticos
+- Monitoreo con health checks
 
-### 📖 Documentación Técnica
+---
 
-| Documento | Descripción |
-|-----------|-------------|
-| [🔧 COMANDOS.md](COMANDOS.md) | Referencia rápida de comandos |
-| [📖 docs/ENTORNO_PRODUCCION.md](docs/ENTORNO_PRODUCCION.md) | Documentación detallada del entorno |
-| [🧪 docs/PRUEBAS_LOCALES.md](docs/PRUEBAS_LOCALES.md) | Guía de testing local |
-| [🌐 docs/FLUJO_REQUESTS.md](docs/FLUJO_REQUESTS.md) | **Flujo visual de requests Nginx+Gunicorn** |
-| [🐳 docs/DOCKER_GUIA.md](docs/DOCKER_GUIA.md) | Guía de Docker y contenedores |
-| [📊 docs/ANALISIS_DEPENDENCIAS.md](docs/ANALISIS_DEPENDENCIAS.md) | Análisis de dependencias prod vs dev |
-
-## ⚡ Scripts Disponibles
-
-### 🚀 Desarrollo
-
-| Script | Uso | Descripción |
-|--------|-----|-------------|
-| `start.ps1` | `.\start.ps1` | Inicia el servidor (configuración automática) |
-| `stop.ps1` | `.\stop.ps1` | Detiene el servidor |
-
-### 🔍 Análisis
-
-| Script | Uso | Descripción |
-|--------|-----|-------------|
-| `analyze-deps.ps1` | `.\analyze-deps.ps1` | Análisis de dependencias prod vs dev |
-| `analyze-server-config.ps1` | `.\analyze-server-config.ps1` | **Análisis de optimizaciones Nginx/Gunicorn** |
-
-### 🐳 Docker
-
-| Script | Uso | Descripción |
-|--------|-----|-------------|
-| `docker-build.ps1` | `.\docker-build.ps1` | Build básico de imagen Docker |
-| `test-prod-build.ps1` | `.\test-prod-build.ps1` | **Build y test de imagen de producción (Nginx)** |
-| `test-prod-deps.ps1` | `.\test-prod-deps.ps1` | Test de dependencias de producción |
-
-## 🌐 URLs Locales
-
-| Recurso | URL |
-|---------|-----|
-| 🌐 Cliente Web | http://localhost:8000/static/index.html |
-| 📚 API Docs (Swagger) | http://localhost:8000/docs |
-| 💚 Health Check | http://localhost:8000/health |
-| 📡 API Info | http://localhost:8000/api/info |
-
-## �👨‍💻 Autor
-[Tu nombre]
-
-## 📅 Fecha
+**Tarea 3.1 - Despliegue y Producción**  
 Febrero 2026

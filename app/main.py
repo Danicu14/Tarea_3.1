@@ -1,14 +1,15 @@
-"""
-Punto de entrada principal de la aplicación FastAPI
-Configuración de middlewares, CORS, rutas y seguridad
-"""
-from fastapi import FastAPI, Request
+"""Aplicación FastAPI con seguridad y optimizaciones"""
+from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
 import time
 import logging
+from typing import Dict
+from collections import defaultdict
+from datetime import datetime, timedelta
 
 from app.config import settings
 
@@ -32,30 +33,84 @@ app = FastAPI(
 # MIDDLEWARES
 # ========================================
 
-# CORS - Configuración restrictiva para producción
+# Rate limiting en memoria
+rate_limit_storage: Dict[str, list] = defaultdict(list)
+
+def check_rate_limit(client_ip: str) -> bool:
+    """Verifica si el cliente excede el rate limit"""
+    if not settings.rate_limit_enabled:
+        return True
+    
+    now = datetime.now()
+    minute_ago = now - timedelta(minutes=1)
+    
+    # Limpiar requests antiguos
+    rate_limit_storage[client_ip] = [
+        req_time for req_time in rate_limit_storage[client_ip]
+        if req_time > minute_ago
+    ]
+    
+    # Verificar límite
+    if len(rate_limit_storage[client_ip]) >= settings.rate_limit_per_minute:
+        return False
+    
+    # Registrar request
+    rate_limit_storage[client_ip].append(now)
+    return True
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Middleware de rate limiting"""
+    client_ip = request.client.host if request.client else "unknown"
+    
+    if not check_rate_limit(client_ip):
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={
+                "error": "Too Many Requests",
+                "message": "Has excedido el límite de peticiones. Intenta más tarde."
+            }
+        )
+    
+    response = await call_next(request)
+    response.headers["X-RateLimit-Limit"] = str(settings.rate_limit_per_minute)
+    return response
+
+@app.middleware("http")
+async def https_redirect_middleware(request: Request, call_next):
+    """Forzar HTTPS en producción"""
+    if settings.force_https and settings.environment == "production":
+        if request.url.scheme != "https":
+            url = request.url.replace(scheme="https")
+            return JSONResponse(
+                status_code=status.HTTP_301_MOVED_PERMANENTLY,
+                headers={"Location": str(url)}
+            )
+    response = await call_next(request)
+    return response
+
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
-    max_age=3600,  # Cache de preflight requests
+    max_age=3600,
 )
 
-# Middleware de tiempo de respuesta
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
-    """Añade header con tiempo de procesamiento"""
+    """Tiempo de procesamiento"""
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
     return response
 
-# Middleware de seguridad - Headers
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
-    """Añade headers de seguridad"""
+    """Headers de seguridad"""
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -125,31 +180,86 @@ async def get_item(item_id: int):
     }
 
 # ========================================
-# MANEJO DE ERRORES
+# MANEJO DE ERRORES SEGURO
 # ========================================
 
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc):
-    """Manejo personalizado de 404"""
+    """Manejo personalizado de 404 - No expone paths en producción"""
+    content = {
+        "error": "Not Found",
+        "message": "El recurso solicitado no existe"
+    }
+    
+    # Solo en desarrollo mostramos el path
+    if settings.debug:
+        content["path"] = str(request.url)
+    
     return JSONResponse(
         status_code=404,
-        content={
-            "error": "Not Found",
-            "message": "El recurso solicitado no existe",
-            "path": str(request.url)
-        }
+        content=content
     )
 
 @app.exception_handler(500)
 async def internal_error_handler(request: Request, exc):
-    """Manejo personalizado de errores internos"""
-    logger.error(f"Error interno: {exc}")
+    """Manejo personalizado de errores internos - Oculta detalles en producción"""
+    logger.error(f"Error interno: {exc}", exc_info=True)
+    
+    content = {
+        "error": "Internal Server Error",
+        "message": "Ha ocurrido un error interno. Por favor contacta al soporte."
+    }
+    
+    # Solo en desarrollo mostramos detalles del error
+    if settings.debug:
+        content["detail"] = str(exc)
+        content["type"] = type(exc).__name__
+    
     return JSONResponse(
         status_code=500,
-        content={
-            "error": "Internal Server Error",
-            "message": "Ha ocurrido un error interno" if settings.environment == "production" else str(exc)
-        }
+        content=content
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Manejo de errores de validación - Mensajes sanitizados"""
+    logger.warning(f"Error de validación: {exc}")
+    
+    content = {
+        "error": "Validation Error",
+        "message": "Los datos enviados no son válidos"
+    }
+    
+    # Solo en desarrollo mostramos detalles de validación
+    if settings.debug:
+        content["details"] = exc.errors()
+    
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=content
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Catch-all para errores no manejados - NUNCA expone stack traces en producción"""
+    logger.error(f"Error no manejado: {exc}", exc_info=True)
+    
+    content = {
+        "error": "Server Error",
+        "message": "Ha ocurrido un error inesperado"
+    }
+    
+    # Solo en desarrollo mostramos información de debug
+    if settings.debug:
+        content["detail"] = str(exc)
+        content["type"] = type(exc).__name__
+    else:
+        # En producción, solo mensaje genérico
+        content["support_id"] = f"ERR-{int(time.time())}"
+    
+    return JSONResponse(
+        status_code=500,
+        content=content
     )
 
 # ========================================

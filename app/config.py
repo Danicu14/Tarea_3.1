@@ -1,18 +1,18 @@
-"""
-Configuración de la aplicación usando Pydantic Settings
-Carga variables de entorno de forma segura
-"""
+"""Configuración de la aplicación"""
 from pydantic_settings import BaseSettings
 from typing import List
 from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    """Configuración de la aplicación"""
+    """Configuración general"""
     
     # Entorno
     environment: str = "development"
     debug: bool = True
+    
+    # Seguridad
+    force_https: bool = False
     
     # Servidor
     host: str = "0.0.0.0"
@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # Seguridad
     secret_key: str = "change-this-secret-key-in-production"
     allowed_origins: str = "http://localhost:3000,http://localhost:8000"
+    
+    # Rate Limiting
+    rate_limit_enabled: bool = True
+    rate_limit_per_minute: int = 60
     
     # CORS
     cors_origins: str = "http://localhost:3000,http://localhost:8000"
@@ -50,10 +54,7 @@ class Settings(BaseSettings):
 
 @lru_cache()
 def get_settings() -> Settings:
-    """
-    Retorna instancia singleton de configuración
-    El decorador lru_cache asegura que solo se crea una instancia
-    """
+    """Configuración singleton"""
     return Settings()
 
 
