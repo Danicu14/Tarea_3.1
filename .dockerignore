@@ -1,0 +1,91 @@
+# .dockerignore - Archivos a ignorar al construir imagen Docker
+# Reduce el tamaño del build context y mejora la velocidad
+
+# Entornos virtuales de Python
+venv/
+env/
+ENV/
+.venv/
+
+# Archivos compilados de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Archivos de distribución
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Testing y coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentación
+docs/
+*.md
+!README.md
+
+# Archivos de configuración local
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Archivos temporales
+tmp/
+temp/
+*.tmp
+
+# Dependencias de desarrollo
+requirements-dev.txt
+requirements.in
+
+# Archivos de desarrollo
+Dockerfile.dev
+docker-compose.yml
+docker-compose.*.yml
+
+# Scripts de desarrollo
+start.ps1
+start_server.ps1
+stop.ps1
+
+# Tests
+tests/
+test_*.py
+*_test.py
+
+# CI/CD (a menos que se necesiten)
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Otros
+*.bak
+*.swp
+.cache/

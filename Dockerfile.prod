@@ -1,0 +1,126 @@
+# ============================================
+# Dockerfile de Producción Optimizado
+# FastAPI + Nginx + Gunicorn + Supervisord
+# ============================================
+# 
+# Arquitectura:
+# - Nginx: Servidor web / proxy inverso (puerto 8000)
+# - Gunicorn: Servidor de aplicación con workers Uvicorn (puerto 8001 interno)
+# - Supervisord: Gestor de procesos
+#
+# Optimizaciones aplicadas:
+# - Multi-stage build para reducir tamaño final
+# - Nginx sirve archivos estáticos directamente
+# - Compresión gzip habilitada
+# - Cache de archivos estáticos
+# - Múltiples workers Gunicorn para paralelización
+# - Usuario no privilegiado para seguridad
+# - Health checks integrados
+# ============================================
+
+# ============================================
+# STAGE 1: Builder - Compilar dependencias
+# ============================================
+
+FROM python:3.11-slim AS builder
+
+# Metadata
+LABEL stage=builder
+LABEL description="Build stage para compilar dependencias Python"
+
+# Variables de entorno para Python
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Instalar dependencias del sistema necesarias para compilar
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Crear directorio para las dependencias
+WORKDIR /install
+
+# Copiar archivo de dependencias de producción
+COPY requirements-prod.txt .
+
+# Instalar dependencias en directorio aislado
+# Esto permite copiarlas fácilmente al stage final
+RUN pip install --prefix=/install --no-warn-script-location -r requirements-prod.txt
+
+# ============================================
+# STAGE 2: Runtime - Imagen final optimizada
+# ============================================
+
+FROM python:3.11-slim AS runtime
+
+# Metadata
+LABEL maintainer="tu-email@ejemplo.com"
+LABEL description="Aplicación FastAPI con Nginx en producción"
+LABEL version="1.0.0"
+
+# Variables de entorno
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/install/bin:$PATH" \
+    PYTHONPATH="/install/lib/python3.11/site-packages:$PYTHONPATH" \
+    ENVIRONMENT=production \
+    PORT=8000
+
+# Instalar Nginx, Supervisor y dependencias de runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nginx \
+    supervisor \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /etc/nginx/sites-enabled/default \
+    && rm -rf /etc/nginx/sites-available/default
+
+# Crear usuario no privilegiado para la aplicación
+RUN useradd -m -u 1000 -s /bin/bash appuser && \
+    mkdir -p /var/log/supervisor /var/log/nginx /var/run && \
+    chown -R appuser:appuser /var/log/supervisor /var/log/nginx /var/run
+
+# Copiar dependencias Python desde el builder
+COPY --from=builder /install /install
+
+# Establecer directorio de trabajo
+WORKDIR /app
+
+# Copiar archivos de configuración
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY gunicorn.conf.py /app/gunicorn.conf.py
+
+# Copiar código de la aplicación
+COPY app /app/app
+
+# Copiar archivos estáticos del frontend
+COPY static /app/static
+
+# Ajustar permisos
+RUN chown -R appuser:appuser /app && \
+    chmod -R 755 /app && \
+    # Dar permisos a nginx para leer archivos estáticos
+    chown -R nginx:nginx /app/static && \
+    # Crear directorio para sockets y PIDs
+    mkdir -p /var/run/supervisor && \
+    chown -R appuser:appuser /var/run/supervisor
+
+# Exponer puerto (Nginx escucha aquí)
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Cambiar a usuario no privilegiado
+# Nota: Supervisord necesita permisos para iniciar nginx, 
+# así que corremos como root pero nginx y gunicorn corren con usuarios limitados
+USER root
+
+# Comando de inicio: Supervisord gestiona Nginx + Gunicorn
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

@@ -1,0 +1,112 @@
+#!/bin/bash
+# Git Pre-Push Hook
+# Se ejecuta antes de hacer push al repositorio
+# Ejecuta tests para asegurar que el código funciona
+
+echo "🚀 Pre-push hook: Ejecutando validaciones..."
+
+# ========================================
+# 1. Obtener información del push
+# ========================================
+
+while read local_ref local_sha remote_ref remote_sha
+do
+    REMOTE_BRANCH=$(echo $remote_ref | sed 's/refs\/heads\///')
+    
+    echo "Branch remoto: $REMOTE_BRANCH"
+    
+    # ========================================
+    # 2. Tests obligatorios para main/master
+    # ========================================
+    
+    if [ "$REMOTE_BRANCH" = "main" ] || [ "$REMOTE_BRANCH" = "master" ]; then
+        echo ""
+        echo "⚠️  Push a $REMOTE_BRANCH detectado"
+        echo "Ejecutando tests obligatorios..."
+        echo ""
+        
+        # Verificar si pytest está disponible
+        if command -v pytest &> /dev/null; then
+            # Ejecutar tests
+            pytest tests/ -v --tb=short
+            
+            if [ $? -ne 0 ]; then
+                echo ""
+                echo "❌ Tests fallaron"
+                echo "No se puede hacer push a $REMOTE_BRANCH con tests fallidos"
+                echo ""
+                echo "Opciones:"
+                echo "  1. Arregla los tests y vuelve a intentar"
+                echo "  2. Usa --no-verify para omitir este hook (NO RECOMENDADO)"
+                exit 1
+            fi
+            
+            echo ""
+            echo "✅ Tests pasaron exitosamente"
+        else
+            echo "⚠️  pytest no disponible, omitiendo tests"
+        fi
+        
+        # ========================================
+        # 3. Verificar que el branch está actualizado
+        # ========================================
+        
+        echo ""
+        echo "Verificando estado del branch..."
+        
+        # Fetch para obtener últimos cambios
+        git fetch origin $REMOTE_BRANCH --quiet 2>/dev/null
+        
+        # Comparar con origin
+        LOCAL=$(git rev-parse @)
+        REMOTE=$(git rev-parse @{u} 2>/dev/null || echo "")
+        BASE=$(git merge-base @ @{u} 2>/dev/null || echo "")
+        
+        if [ -n "$REMOTE" ]; then
+            if [ "$LOCAL" = "$REMOTE" ]; then
+                echo "✅ Branch actualizado"
+            elif [ "$LOCAL" = "$BASE" ]; then
+                echo "⚠️  WARNING: Tu branch está desactualizado"
+                echo "Considera hacer pull antes de push"
+                # No fallar, solo advertir
+            elif [ "$REMOTE" = "$BASE" ]; then
+                echo "✅ Tu branch está adelantado"
+            else
+                echo "⚠️  WARNING: Los branches han divergido"
+                echo "Considera hacer merge/rebase antes de push"
+                # No fallar, solo advertir
+            fi
+        fi
+    fi
+    
+    # ========================================
+    # 4. Verificar commits
+    # ========================================
+    
+    if [ "$local_sha" != "0000000000000000000000000000000000000000" ]; then
+        echo ""
+        echo "Analizando commits a pushear..."
+        
+        # Contar commits
+        if [ "$remote_sha" != "0000000000000000000000000000000000000000" ]; then
+            NUM_COMMITS=$(git log $remote_sha..$local_sha --oneline | wc -l)
+            echo "Commits a pushear: $NUM_COMMITS"
+            
+            # Mostrar los commits
+            if [ $NUM_COMMITS -gt 0 ] && [ $NUM_COMMITS -le 10 ]; then
+                git log $remote_sha..$local_sha --oneline
+            fi
+        fi
+    fi
+done
+
+# ========================================
+# SUCCESS
+# ========================================
+
+echo ""
+echo "✅ Pre-push validations passed!"
+echo "🚀 Proceeding with push..."
+echo ""
+
+exit 0

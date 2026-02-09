@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Cliente - FastAPI App</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 Aplicación FastAPI</h1>
+            <p>Cliente conectado a la API en producción</p>
+        </header>
+
+        <main>
+            <section class="api-info">
+                <h2>📡 Información de la API</h2>
+                <div id="api-info-container">
+                    <p>Cargando información...</p>
+                </div>
+            </section>
+
+            <section class="items-list">
+                <h2>📦 Items de Ejemplo</h2>
+                <button id="load-items" class="btn">Cargar Items</button>
+                <div id="items-container">
+                    <!-- Los items se cargarán aquí dinámicamente -->
+                </div>
+            </section>
+
+            <section class="health-check">
+                <h2>💚 Estado del Servidor</h2>
+                <button id="check-health" class="btn btn-success">Verificar Salud</button>
+                <div id="health-container">
+                    <!-- Estado de salud se mostrará aquí -->
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Tarea 3.1 - Despliegue a Producción | 2026</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

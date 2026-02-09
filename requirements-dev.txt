@@ -1,0 +1,35 @@
+# Dependencias de Desarrollo
+# Estas dependencias solo se usan durante el desarrollo, NO en producción
+
+# Incluir todas las dependencias de producción
+-r requirements-prod.txt
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+httpx==0.25.2  # Cliente HTTP para tests
+
+# Linting y formateo de código
+black==23.12.1
+flake8==6.1.0
+isort==5.13.2
+mypy==1.8.0
+
+# Pre-commit hooks
+pre-commit==3.6.0
+
+# Documentación
+mkdocs==1.5.3
+mkdocs-material==9.5.3
+
+# Análisis de código
+pylint==3.0.3
+bandit==1.7.6  # Seguridad
+
+# Debugging
+ipython==8.19.0
+ipdb==0.13.13
+
+# Monitorización de rendimiento
+locust==2.20.0  # Load testing

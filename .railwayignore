@@ -1,0 +1,68 @@
+# Railway Ignore File
+# Similar a .dockerignore, especifica qué archivos NO subir a Railway
+
+# Git
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Tests
+tests/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Desarrollo
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentación solo para desarrollo
+docs/
+*.md
+!README.md
+
+# Scripts de desarrollo
+scripts/
+*.ps1
+!deploy.ps1
+
+# Docker compose (solo para local)
+docker-compose.yml
+docker-compose.*.yml
+!docker-compose.prod.yml
+
+# Archivos temporales
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+
+# Dependencias de desarrollo
+requirements-dev.txt
+requirements.in
+
+# Configuración local
+.env.example
+.env.local
+
+# Build artifacts
+dist/
+build/
+*.egg-info/

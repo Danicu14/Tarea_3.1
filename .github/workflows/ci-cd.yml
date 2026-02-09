@@ -1,0 +1,328 @@
+# ========================================
+# GitHub Actions Workflow - CI/CD Pipeline
+# ========================================
+#
+# Este workflow implementa un pipeline completo de CI/CD:
+# 1. CI (Continuous Integration):
+#    - Checkout del código
+#    - Setup de Python
+#    - Instalación de dependencias
+#    - Linting (flake8, black)
+#    - Tests unitarios (pytest)
+#    - Build de imagen Docker
+#    - Scan de seguridad
+#
+# 2. CD (Continuous Deployment):
+#    - Deploy automático a Railway (solo en main)
+#    - Rollback automático si falla health check
+#
+# Triggers:
+# - Push a main/develop
+# - Pull requests a main
+# - Manual (workflow_dispatch)
+#
+# ========================================
+
+name: CI/CD Pipeline
+
+on:
+  # Trigger en push a main y develop
+  push:
+    branches:
+      - main
+      - develop
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+
+  # Trigger en pull requests a main
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+  # Trigger manual
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+# Variables de entorno globales
+env:
+  PYTHON_VERSION: '3.11'
+  DOCKER_IMAGE_NAME: fastapi-nginx-prod
+  RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+
+jobs:
+  # ========================================
+  # JOB 1: Linting y Code Quality
+  # ========================================
+  lint:
+    name: 🔍 Lint & Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort mypy
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+
+      - name: 🎨 Check code formatting with Black
+        run: |
+          black --check --diff app/
+
+      - name: 📐 Check import sorting with isort
+        run: |
+          isort --check-only --diff app/
+
+      - name: 🔍 Lint with flake8
+        run: |
+          # Stop build si hay errores de sintaxis o nombres indefinidos
+          flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Warnings por complejidad, longitud de línea, etc.
+          flake8 app/ --count --max-complexity=10 --max-line-length=120 --statistics
+
+      - name: 🔎 Type checking with mypy (opcional)
+        continue-on-error: true
+        run: |
+          mypy app/ --ignore-missing-imports || true
+
+  # ========================================
+  # JOB 2: Tests Unitarios
+  # ========================================
+  test:
+    name: 🧪 Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-prod.txt
+          pip install pytest pytest-cov pytest-asyncio httpx
+
+      - name: 🧪 Run tests with pytest
+        run: |
+          pytest tests/ -v --cov=app --cov-report=xml --cov-report=term
+
+      - name: 📊 Upload coverage to Codecov (opcional)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: codecov/codecov-action@v3
+        continue-on-error: true
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+
+  # ========================================
+  # JOB 3: Security Scan
+  # ========================================
+  security:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 🔒 Run safety check (vulnerabilidades en dependencias)
+        continue-on-error: true
+        run: |
+          pip install safety
+          safety check --file requirements-prod.txt --output text || true
+
+      - name: 🔍 Run bandit (security linter)
+        continue-on-error: true
+        run: |
+          pip install bandit
+          bandit -r app/ -f json -o bandit-report.json || true
+
+  # ========================================
+  # JOB 4: Build Docker Image
+  # ========================================
+  build:
+    name: 🐳 Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [test, security]
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🐳 Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.prod
+          push: false
+          tags: ${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true
+
+      - name: 🔍 Scan Docker image with Trivy
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+
+      - name: 📊 Check image size
+        run: |
+          docker images ${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+
+  # ========================================
+  # JOB 5: Deploy to Railway (solo en main)
+  # ========================================
+  deploy:
+    name: 🚀 Deploy to Railway
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🚂 Install Railway CLI
+        run: |
+          curl -fsSL https://railway.app/install.sh | sh
+
+      - name: 🚀 Deploy to Railway
+        id: deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway link ${{ env.RAILWAY_PROJECT_ID }}
+          railway up --detach
+          echo "url=https://your-app.railway.app" >> $GITHUB_OUTPUT
+
+      - name: ⏳ Wait for deployment
+        run: |
+          echo "Esperando 30 segundos para que el deploy complete..."
+          sleep 30
+
+      - name: 🏥 Health check
+        id: health
+        run: |
+          HEALTH_URL="${{ steps.deploy.outputs.url }}/health"
+          echo "Verificando health check en: $HEALTH_URL"
+          
+          MAX_RETRIES=5
+          RETRY_DELAY=10
+          
+          for i in $(seq 1 $MAX_RETRIES); do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" || echo "000")
+            
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ Health check exitoso!"
+              exit 0
+            else
+              echo "⚠️ Intento $i/$MAX_RETRIES falló (HTTP $HTTP_CODE)"
+              if [ $i -lt $MAX_RETRIES ]; then
+                echo "Reintentando en ${RETRY_DELAY}s..."
+                sleep $RETRY_DELAY
+              fi
+            fi
+          done
+          
+          echo "❌ Health check falló después de $MAX_RETRIES intentos"
+          exit 1
+
+      - name: 🔔 Notify deployment success
+        if: success()
+        run: |
+          echo "✅ Deployment exitoso a Railway!"
+          echo "🌐 URL: ${{ steps.deploy.outputs.url }}"
+
+      - name: 🔴 Notify deployment failure
+        if: failure()
+        run: |
+          echo "❌ Deployment falló!"
+          echo "⚠️ Revisar logs en Railway Dashboard"
+
+      - name: 🔙 Rollback on failure
+        if: failure() && steps.health.outcome == 'failure'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          echo "🔙 Iniciando rollback automático..."
+          railway rollback
+          echo "✅ Rollback completado"
+
+  # ========================================
+  # JOB 6: Post-Deploy Smoke Tests
+  # ========================================
+  smoke-tests:
+    name: 🔥 Smoke Tests
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: 🧪 Test API endpoints
+        run: |
+          BASE_URL="https://your-app.railway.app"
+          
+          echo "🧪 Testing /health endpoint..."
+          curl -f "$BASE_URL/health" || exit 1
+          
+          echo "🧪 Testing /api/info endpoint..."
+          curl -f "$BASE_URL/api/info" || exit 1
+          
+          echo "🧪 Testing static files..."
+          curl -f "$BASE_URL/" || exit 1
+          
+          echo "✅ Todos los smoke tests pasaron"
+
+# ========================================
+# Notificaciones y Monitoring
+# ========================================
+# Para habilitar notificaciones adicionales:
+# - Slack: usa slackapi/slack-github-action
+# - Discord: usa Ilshidur/action-discord
+# - Email: usa dawidd6/action-send-mail
+# ========================================

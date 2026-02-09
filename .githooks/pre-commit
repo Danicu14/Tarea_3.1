@@ -1,0 +1,126 @@
+#!/bin/bash
+# Git Pre-Commit Hook
+# Se ejecuta automáticamente antes de cada commit
+# Valida código y previene commits con errores
+
+echo "🔍 Pre-commit hook: Validando código..."
+
+# ========================================
+# 1. Verificar archivos Python con errores de sintaxis
+# ========================================
+
+echo "Verificando sintaxis de Python..."
+
+# Obtener archivos Python modificados
+PYTHON_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$')
+
+if [ -n "$PYTHON_FILES" ]; then
+    for file in $PYTHON_FILES; do
+        # Verificar sintaxis
+        python -m py_compile "$file" 2>/dev/null
+        if [ $? -ne 0 ]; then
+            echo "❌ Error de sintaxis en: $file"
+            exit 1
+        fi
+    done
+    echo "✅ Sintaxis Python OK"
+else
+    echo "ℹ️  No hay archivos Python modificados"
+fi
+
+# ========================================
+# 2. Verificar formato con Black (si está instalado)
+# ========================================
+
+if command -v black &> /dev/null; then
+    if [ -n "$PYTHON_FILES" ]; then
+        echo "Verificando formato con Black..."
+        black --check $PYTHON_FILES 2>/dev/null
+        if [ $? -ne 0 ]; then
+            echo "❌ Código no formateado con Black"
+            echo "Ejecuta: black $PYTHON_FILES"
+            exit 1
+        fi
+        echo "✅ Formato Black OK"
+    fi
+fi
+
+# ========================================
+# 3. Verificar que no se commitean archivos sensibles
+# ========================================
+
+echo "Verificando archivos sensibles..."
+
+SENSITIVE_FILES="\.env$|\.env\.production$|\.pem$|\.key$|id_rsa|\.vscode/settings\.json"
+
+FOUND_SENSITIVE=$(git diff --cached --name-only | grep -E "$SENSITIVE_FILES")
+
+if [ -n "$FOUND_SENSITIVE" ]; then
+    echo "❌ Intentando commitear archivos sensibles:"
+    echo "$FOUND_SENSITIVE"
+    echo ""
+    echo "Añádelos a .gitignore o usa git reset HEAD <archivo>"
+    exit 1
+fi
+
+echo "✅ No hay archivos sensibles"
+
+# ========================================
+# 4. Verificar que no hay print() o debugger en código de producción
+# ========================================
+
+if [ -n "$PYTHON_FILES" ]; then
+    echo "Verificando prints/debuggers en app/..."
+    
+    APP_FILES=$(echo "$PYTHON_FILES" | grep '^app/')
+    
+    if [ -n "$APP_FILES" ]; then
+        # Buscar print() (excluir comentarios)
+        PRINTS=$(grep -n "^\s*print(" $APP_FILES 2>/dev/null || true)
+        
+        if [ -n "$PRINTS" ]; then
+            echo "⚠️  WARNING: Se encontraron print() en código de producción:"
+            echo "$PRINTS"
+            echo ""
+            echo "Considera usar logging en lugar de print()"
+            # No fallar, solo advertir
+        fi
+        
+        # Buscar debugger
+        DEBUGGERS=$(grep -n "import pdb\|pdb\.set_trace\|breakpoint()" $APP_FILES 2>/dev/null || true)
+        
+        if [ -n "$DEBUGGERS" ]; then
+            echo "❌ DEBUGGERS encontrados en código:"
+            echo "$DEBUGGERS"
+            echo ""
+            echo "Remueve debuggers antes de commitear"
+            exit 1
+        fi
+    fi
+fi
+
+# ========================================
+# 5. Verificar tamaño de archivos
+# ========================================
+
+echo "Verificando tamaño de archivos..."
+
+LARGE_FILES=$(git diff --cached --name-only | xargs ls -l 2>/dev/null | awk '$5 > 5242880 {print $9, "(" $5/1048576 " MB)"}')
+
+if [ -n "$LARGE_FILES" ]; then
+    echo "⚠️  WARNING: Archivos grandes (>5MB):"
+    echo "$LARGE_FILES"
+    echo ""
+    echo "Considera usar Git LFS para archivos grandes"
+    # No fallar, solo advertir
+fi
+
+# ========================================
+# SUCCESS
+# ========================================
+
+echo ""
+echo "✅ Pre-commit validations passed!"
+echo ""
+
+exit 0

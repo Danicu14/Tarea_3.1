@@ -1,0 +1,23 @@
+# Gestión de Dependencias con pip-tools
+# Este archivo define las dependencias base, pip-compile genera requirements.txt con versiones exactas
+
+# Core
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# Validación
+pydantic>=2.6.0
+pydantic-settings>=2.1.0
+
+# Seguridad
+python-jose[cryptography]
+passlib[bcrypt]
+
+# Utilidades
+python-multipart
+python-dotenv
+requests
+aiofiles
+
+# Producción
+gunicorn

@@ -1,0 +1,25 @@
+# Dependencias de Producción
+# Estas son las dependencias mínimas necesarias para ejecutar la aplicación en producción
+
+# Core - Framework y servidor
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# Validación y configuración
+pydantic>=2.6.0
+pydantic-settings>=2.1.0
+
+# Seguridad
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Manejo de peticiones
+python-multipart==0.0.6
+requests==2.31.0
+
+# Utilidades de producción
+python-dotenv==1.0.0
+aiofiles==23.2.1
+
+# Servidor de producción
+gunicorn==21.2.0
